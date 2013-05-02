@@ -255,7 +255,12 @@ window.MoSyncDebugProtocol = new (function() {
                 step = false;
                 shouldBreak = function() { return false; };
                 // Try to kill it -- this obviously requires wormhole.
-                mosync.bridge.send(["close"]);
+                var canTerminate = mosync && mosync.app && mosync.app.exit;
+                if (canTerminate) {
+                    mosync.app.exit();
+                } else {
+                    alert('Remote terminate not supported for this app');
+                }
                 return false;
                 
             case 'disconnect':
@@ -357,7 +362,6 @@ window.MoSyncDebugProtocol = new (function() {
     
     function performReload() {
         window.location.reload();
-        mosync.bridge.send(["reload", serverHost, serverPort]);
     }
     
     function doEval(evalScopeFunc, cmd) {
@@ -417,7 +421,8 @@ window.MoSyncDebugProtocol = new (function() {
     }
     
     function getLocation() {
-        return window ? window.document.location.href : "<unknown>";
+        // Remove any # in the url
+        return window ? window.document.location.href.replace(/#(.*)/, '') : "<unknown>";
     }
     
     this.init = function() {

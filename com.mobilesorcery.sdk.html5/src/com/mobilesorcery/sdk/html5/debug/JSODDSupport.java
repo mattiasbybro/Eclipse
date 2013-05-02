@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -748,7 +749,7 @@ public class JSODDSupport {
 			FileRedefinable fileRedefinable = new FileRedefinable(null, file);
 
 			if (isValidJavaScriptFile(filePath)) {
-				String source = Util.readFile(absoluteFile.getAbsolutePath());
+				String source = Util.readFile(absoluteFile.getAbsolutePath(), "UTF8");
 				String prunedSource = source;
 				TreeSet<Integer> scopeResetPoints = new TreeSet<Integer>();
 
@@ -773,43 +774,69 @@ public class JSODDSupport {
 
 				// 1. Parse (JSDT)
 				parser.setSource(prunedSource.toCharArray());
-				ASTNode ast = parser.createAST(new NullProgressMonitor());
-
-				// 2. Instrument
-				visitor.setFileRedefinable(fileRedefinable);
-				visitor.setScopeResetPoints(scopeResetPoints);
-				ast.accept(visitor);
 				TreeMap<Integer, LocalVariableScope> scopeMap = new TreeMap<Integer, LocalVariableScope>();
 				TreeSet<Integer> instrumentedLines = new TreeSet<Integer>();
+				
+				try {
+					ASTNode ast = parser.createAST(new NullProgressMonitor());
+
+					// 2. Instrument
+					visitor.setFileRedefinable(fileRedefinable);
+					visitor.setScopeResetPoints(scopeResetPoints);
+					ast.accept(visitor);
+				} catch (Exception e) {
+					int errorLine = findPossibleErrorLine(visitor);
+					fileRedefinable.setErrorMessage(MessageFormat.format("Could not parse {0} -- probably a syntax error close to line {1}. Debugging disabled for this file.", filePath.toOSString(), errorLine));
+				}
+				
 				visitor.rewrite(fileId, source, fwImportLocation, output, scopeMap,
 						instrumentedLines);
 
 				// 3. Update state and notify listeners
 				String instrumentedSource = visitor.getInstrumentedSource();
+				
+				// 4. Do another parse of the instrumented stuff.
+				try {
+					if (fileRedefinable.validate() == null) {
+						parser.setSource(instrumentedSource.toCharArray());
+						parser.createAST(new NullProgressMonitor());
+					}
+				} catch (Exception e) {
+					instrumentedSource = source;
+					fileRedefinable.setErrorMessage(MessageFormat.format("Unable to instrument {0} due to limitiations in the instrumentation engine. Debugging disabled for this file", filePath.toOSString()));
+				}
+				
 				this.instrumentedSource.put(file, instrumentedSource);
 				scopeMaps.put(fileId, scopeMap);
 				lineMaps.put(fileId, instrumentedLines);
-
-				if (baseline != null) {
-					baseline.replaceChild(fileRedefinable);
-				}
+			}
+			if (baseline != null) {
+				baseline.replaceChild(fileRedefinable);
 			}
 			return fileRedefinable;
 		} catch (CoreException e) {
 			throw e;
 		} catch (Exception e) {
 			String positionHint = "";
-			Position currentPosition = null;
-			if (visitor != null) {
-				currentPosition = visitor.getCurrentPosition();
-			}
-			if (currentPosition != null) {
-				positionHint = ", near line " + currentPosition.getLine();
+			int line = findPossibleErrorLine(visitor);
+			if (line > 0) {
+				positionHint = ", near line " + line;
 			}
 			String locationHintMsg = MessageFormat.format("In file {0}{1}: {2}", filePath.toOSString(), positionHint, e.getMessage());
 			throw new CoreException(new Status(IStatus.ERROR,
 					Html5Plugin.PLUGIN_ID, locationHintMsg, e));
 		}
+	}
+
+	private int findPossibleErrorLine(DebugRewriteOperationVisitor visitor) {
+		Position currentPosition = null;
+		if (visitor != null) {
+			currentPosition = visitor.getCurrentPosition();
+		}
+		if (currentPosition != null) {
+			return currentPosition.getLine();
+		}
+		return 0;
 	}
 
 	private void initProjectRedefinable() {
@@ -824,6 +851,9 @@ public class JSODDSupport {
 	// spaces. The second value is the location of the first script tag.
 	private Pair<String, Integer> getEmbeddedJavaScript(IFile file,
 			NavigableSet<Integer> scopeResetPoints, ArrayList<Pair<Integer, Integer>> htmlRanges) throws Exception {
+		if (!"UTF-8".equals(file.getCharset())) {
+			throw new IllegalArgumentException(MessageFormat.format("File {0} is not UTF-8 encoded, cannot continue", file.getLocation().toFile().getAbsolutePath()));
+		}
 		final CountDownLatch latch = new CountDownLatch(1);
 		IModelManager modelManager = StructuredModelManager.getModelManager();
 		IStructuredDocument doc = modelManager
@@ -842,15 +872,15 @@ public class JSODDSupport {
 		// where to reset the scopes. Overly complicated...
 		org.eclipse.jface.text.Position[] htmlLocations = translator
 				.getHtmlLocations();
+
 		for (org.eclipse.jface.text.Position htmlLocation : htmlLocations) {
 			scopeResetPoints.add(htmlLocation.offset);
 		}
-		org.eclipse.jface.text.Position[] ranges = translator
-				.getHtmlLocations();
-		for (int i = 0; i <= ranges.length; i++) {
-			int start = i == 0 ? 0 : ranges[i - 1].offset
-					+ ranges[i - 1].length;
-			int end = i == ranges.length ? doc.getLength() : ranges[i].offset;
+		
+		for (int i = 0; i <= htmlLocations.length; i++) {
+			int start = i == 0 ? 0 : htmlLocations[i - 1].offset
+					+ htmlLocations[i - 1].length;
+			int end = i == htmlLocations.length ? doc.getLength() : htmlLocations[i].offset;
 			htmlRanges.add(new Pair<Integer, Integer>(start, end));
 		}
 		

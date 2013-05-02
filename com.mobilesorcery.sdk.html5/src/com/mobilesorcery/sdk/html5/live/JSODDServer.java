@@ -54,6 +54,8 @@ import org.eclipse.core.runtime.preferences.IEclipsePreferences.IPreferenceChang
 import org.eclipse.core.runtime.preferences.IEclipsePreferences.PreferenceChangeEvent;
 import org.eclipse.debug.core.DebugException;
 import org.eclipse.debug.core.DebugPlugin;
+import org.eclipse.debug.core.ILaunch;
+import org.eclipse.debug.core.ILaunchManager;
 import org.eclipse.debug.core.model.IBreakpoint;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Request;
@@ -329,7 +331,6 @@ public class JSODDServer implements IResourceChangeListener {
 				if (sessionQueue != null) {
 					sessionQueue.offer(poison());
 				}
-
 				
 				messageListenerIds.addAll(messageListeners.keySet());
 			}
@@ -402,9 +403,13 @@ public class JSODDServer implements IResourceChangeListener {
 						&& timeOfLastTake != null
 						&& now - timeOfLastTake > PING_INTERVAL;
 				Long lastHeartbeat = lastHeartbeats.get(sessionId);
+				long elapsedSinceLastHeartbeat = now - lastHeartbeat; 
 				boolean timeoutOccured = lastHeartbeat != null
-						&& now - lastHeartbeat > 2 * PING_INTERVAL;
+						&& elapsedSinceLastHeartbeat > 5 * PING_INTERVAL;
 				if (timeoutOccured && timeoutListener != null) {
+					if (CoreMoSyncPlugin.getDefault().isDebugging()) {
+						CoreMoSyncPlugin.trace("Timeout occurred for {0}, {1} since last ping", sessionId, Util.elapsedTime(elapsedSinceLastHeartbeat));
+					}
 					killSession(sessionId);
 					timeoutListener.timeoutOccurred(sessionId);
 				}
@@ -421,12 +426,6 @@ public class JSODDServer implements IResourceChangeListener {
 		
 		public void ping(int sessionId) {
 			offer(sessionId, ping());
-		}
-
-		public void heartbeat(Integer[] sessionIds) {
-			for (Integer sessionId : sessionIds) {
-				heartbeat(sessionId);	
-			}
 		}
 		
 		public void heartbeat(int sessionId) {
@@ -609,6 +608,7 @@ public class JSODDServer implements IResourceChangeListener {
 				// RACE CONDITION WILL OCCUR HERE!
 				if (!preflight) {
 					Integer sessionId = extractSessionId(command);
+					queues.heartbeat(sessionId);
 					notifyCommandListeners(sessionId, getCommand(command), command);
 					result = pushCommandsToClient(sessionId, preflight);
 				} else {
@@ -728,24 +728,6 @@ public class JSODDServer implements IResourceChangeListener {
 			default:
 				return "breakpoint-continue";
 			}
-		}
-
-		private void assignNewWaitThread() {
-			Thread previousThread = waitThreads.get("");
-			if (previousThread != Thread.currentThread()) {
-				if (previousThread != null) {
-					previousThread.interrupt();
-				}
-				waitThreads.put("", Thread.currentThread());
-			}
-
-		}
-
-		private DebuggerMessage nextMessage(
-				LinkedBlockingQueue<DebuggerMessage> queue)
-				throws InterruptedException {
-			DebuggerMessage result = queue.take();
-			return result;
 		}
 
 		private void configureForPreflight(HttpServletRequest req,
@@ -1142,14 +1124,19 @@ public class JSODDServer implements IResourceChangeListener {
 			MoSyncProject project, String threadId) {
 		String remoteIp = req.getRemoteAddr();
 		ReloadVirtualMachine vm = getVM(remoteIp);
-		boolean resetVM = vm == null || vm.getThread(threadId) != null;
+		boolean resetVM = vm == null || !Util.equals(vm.getProject(), project.getWrappedProject()) || vm.getThread(threadId) != null;
 		if (resetVM) {
+			boolean needsNewVm = false;
 			if (!unassignedVMs.isEmpty()) {
 				vm = unassignedVMs.remove(0);
+				needsNewVm = true;
 			}
 			int newVMId = newUniqueId();
 			vm.reset(newVMId, project, remoteIp);
-			vmsByHost.put(remoteIp, vm);
+			ReloadVirtualMachine oldVm = vmsByHost.put(remoteIp, vm);
+			if (needsNewVm && oldVm != null) {
+				terminate(oldVm, true);	
+			}
 			notifyInitListeners(vm, !resetVM);
 			if (CoreMoSyncPlugin.getDefault().isDebugging()) {
 				CoreMoSyncPlugin.trace("Assigned id #{0} to vm for project {1}",
@@ -1444,11 +1431,7 @@ public class JSODDServer implements IResourceChangeListener {
 					}
 					break;
 				case RedefinitionResult.TERMINATE:
-					try {
-						vm.getJavaScriptDebugTarget().terminate();
-					} catch (DebugException debugException) {
-						CoreMoSyncPlugin.getDefault().log(debugException);
-					}
+					terminate(vm, false);
 					break;
 				default:
 					// Continue/cancel; do nothing.
@@ -1457,6 +1440,19 @@ public class JSODDServer implements IResourceChangeListener {
 			if (updateBaseline) {
 				vm.setBaseline(replacement);
 			}
+		}
+	}
+
+	private void terminate(ReloadVirtualMachine vm, boolean removeLaunch) {
+		try {
+			IJavaScriptDebugTarget debugTarget = vm.getJavaScriptDebugTarget();
+			debugTarget.terminate();
+			if (removeLaunch) {
+				ILaunchManager manager = DebugPlugin.getDefault().getLaunchManager();
+				manager.removeLaunch(debugTarget.getLaunch());
+			}
+		} catch (DebugException debugException) {
+			CoreMoSyncPlugin.getDefault().log(debugException);
 		}
 	}
 
