@@ -160,4 +160,10 @@ public class MoblinPackager extends AbstractPackager {
 					"Failed to build the moblin package"));
 		}
 	}
+	
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return null;
+	}
+
 }

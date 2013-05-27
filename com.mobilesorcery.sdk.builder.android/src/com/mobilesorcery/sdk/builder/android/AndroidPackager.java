@@ -163,4 +163,10 @@ public class AndroidPackager extends PackageToolPackager {
 			return new ArrayList<String>();
 		}
 	}
+	
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return "AndroidPath";
+	}
+
 }

@@ -163,4 +163,10 @@ public class JavaPackager extends PackageToolPackager {
 		}
 		return super.getShortDescription(project, profile);
 	}
+	
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return null;
+	}
+
 }
