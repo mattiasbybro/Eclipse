@@ -72,4 +72,13 @@ public interface IPackagerDelegate {
 	 */
 	public String getShortDescription(MoSyncProject project, IProfile profile);
 
+	/**
+	* Returns a platform specific include path.
+	* Platform specific builder classes need to implement this
+	* method if a specific path has to be added to the project.
+	* 
+	* @return The include path
+	*/
+	public String getPlatformDefaultIncludePath();
+
 }

@@ -72,5 +72,9 @@ public class ErrorPackager extends AbstractPackager implements IPackager {
 			IBuildVariant variant, IBuildResult result) throws Exception {
 	}
 
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return null;
+	}
 
 }

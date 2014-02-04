@@ -99,5 +99,15 @@ public class PackagerProxy implements IPackager {
 		return platform;
 	}
 
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		try {
+			initDelegate();
+		} catch (CoreException e) {
+			e.printStackTrace();
+			return null;
+		}
+		return delegate.getPlatformDefaultIncludePath();
+	}
 
 }

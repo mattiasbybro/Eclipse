@@ -1127,6 +1127,12 @@ public class MoSyncBuilder extends ACBuilder {
 					.getProfileIncludes(variant.getProfile())));
 		}
 
+		// Add platform specific default include
+		String platformIncludePath = packager.getPlatformDefaultIncludePath();
+		if (platformIncludePath != null) {
+			result.add(MoSyncTool.getDefault().getMoSyncHome().append(platformIncludePath));        
+		}               
+
 		IPath[] additionalIncludePaths = PropertyUtil.getPaths(buildProperties,
 				isNativeOutput ? ADDITIONAL_NATIVE_INCLUDE_PATHS : ADDITIONAL_INCLUDE_PATHS);
 		for (int i = 0; i < additionalIncludePaths.length; i++) {

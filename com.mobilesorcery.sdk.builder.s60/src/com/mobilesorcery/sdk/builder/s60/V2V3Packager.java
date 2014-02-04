@@ -102,4 +102,10 @@ public class V2V3Packager extends PackageToolPackager {
 	protected File getDefaultIconFile() {
 		return null;
 	}
+	
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return null;
+	}
+
 }

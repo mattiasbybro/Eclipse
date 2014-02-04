@@ -31,4 +31,8 @@ public class WinMobilePackager extends PackageToolPackager {
 		return createBuildResult(cabFile);
 	}
 
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return null;
+	}
 }

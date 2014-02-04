@@ -59,4 +59,9 @@ public class NullPackager extends AbstractPackager implements IPackager {
 		// Do nothing - at this point, anyhoo.
 	}
 
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return null;
+	}
+
 }

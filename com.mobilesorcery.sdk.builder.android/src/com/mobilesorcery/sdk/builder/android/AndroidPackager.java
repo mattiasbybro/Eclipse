@@ -234,4 +234,10 @@ public class AndroidPackager extends PackageToolPackager {
 		result.addAll(super.getExtensionModules(project, variant));
 		return result;
 	}
+	
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return "AndroidPath";
+	}
+
 }

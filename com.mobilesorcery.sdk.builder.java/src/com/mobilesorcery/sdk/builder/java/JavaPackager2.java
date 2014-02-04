@@ -261,4 +261,9 @@ public class JavaPackager2 extends AbstractPackager {
         return result.toArray(new String[result.size()]);
     }
 
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return null;
+	}
+
 }

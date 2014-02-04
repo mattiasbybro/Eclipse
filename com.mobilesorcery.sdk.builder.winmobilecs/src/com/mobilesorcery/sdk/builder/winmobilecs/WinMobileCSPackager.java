@@ -164,4 +164,9 @@ public class WinMobileCSPackager extends PackageToolPackager {
 		return hasNativeSupport || !MoSyncBuilder.OUTPUT_TYPE_NATIVE_COMPILE.equals(outputType);
 	}
 
+	@Override
+	public String getPlatformDefaultIncludePath() {
+		return "WindowsPath";
+	}
+
 }
